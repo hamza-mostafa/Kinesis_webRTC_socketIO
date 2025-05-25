@@ -19,19 +19,28 @@ A robust, cloud-ready template for real-time 1:1 video and chat, using Node.js/R
 ### Flowchart Diagram
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart LR
     UA["User A (Browser)"] -- WebRTC Signaling --> KVS["Kinesis Video Streams (Signaling/TURN/STUN)"]
     UB["User B (Browser)"] -- WebRTC Signaling --> KVS
     UA -- Media (SRTP/DTLS) --- UB
-    UA -- REST/AUTH/WS/SIGNALING --> BE[Backend<br>Node.js/Express/Socket.IO]
+    UA -- REST/AUTH/WS/SIGNALING --> BE["Backend<br>Node.js/Express/Socket.IO"]
     UB -- REST/AUTH/WS/fetch ICE,SDP --> BE
-    BE -- Redis --> R[Redis]
-    BE -- Session Logs --> M[MongoDB Atlas]
+    BE -- Redis --> R["Redis"]
+    BE -- Session Logs --> M["MongoDB Atlas"]
+
 ```
 
 ### Sequence Diagram
 
 ```mermaid
+---
+config:
+  theme: neo
+---
 sequenceDiagram
     participant UserA as User A (Browser)
     participant UserB as User B (Browser)
@@ -41,8 +50,6 @@ sequenceDiagram
     participant KDS as Kinesis Data Streams (Analytics)
     participant KVS as Kinesis Video Streams (WebRTC)
     participant TURN as AWS TURN Server (via KVS)
-
-    %% Auth and Pairing
     UserA->>Backend: 1. POST /login (get token)
     UserB->>Backend: 2. POST /login (get token)
     UserA->>Backend: 3. Connect WebSocket/Socket.IO
@@ -50,39 +57,28 @@ sequenceDiagram
     Backend->>Redis: 5. Enqueue users, pair by tags
     Backend-->>UserA: 6. "paired" response (send KVS channel info)
     Backend-->>UserB: 6. "paired" response (send KVS channel info)
-
-    %% WebRTC Signaling via KVS
     UserA->>KVS: 7. Connect to Signaling Channel
     UserB->>KVS: 7. Connect to Signaling Channel
     UserA->>KVS: 8. Send SDP/ICE candidate (WebRTC Offer)
     KVS->>UserB: 9. Forward SDP/ICE (Offer)
     UserB->>KVS: 10. Respond with SDP/ICE (Answer)
     KVS->>UserA: 11. Forward SDP/ICE (Answer)
-
-    %% ICE Gathering / TURN usage
     UserA->>KVS: 12. Request ICE servers (STUN/TURN info)
     KVS->>UserA: 13. Provide ICE/TURN credentials
     UserB->>KVS: 12. Request ICE servers (STUN/TURN info)
     KVS->>UserB: 13. Provide ICE/TURN credentials
-
-    %% If P2P fails, relay via TURN
     UserA->>TURN: 14. Connect via TURN (Encrypted SRTP)
     UserB->>TURN: 14. Connect via TURN (Encrypted SRTP)
-
-    %% Media
     UserA-->>UserB: 15. Media streams (WebRTC, SRTP, DTLS, direct or via TURN)
-
-    %% Chat/Session log persistence
     UserA->>Backend: 16. Chat message (Socket.IO)
     Backend->>UserB: 17. Relay chat message
     Backend->>Mongo: 18. Persist chat/session log
     Backend->>KDS: 19. Stream event/analytics
-
-    %% Session end/timeout
     Backend->>UserA: 20. "session-ended"
     Backend->>UserB: 20. "session-ended"
     Backend->>Mongo: 21. Log session end
     Backend->>KDS: 22. Log session end event
+
 ```
 
 ---
