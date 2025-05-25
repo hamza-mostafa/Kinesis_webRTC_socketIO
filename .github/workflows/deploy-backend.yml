@@ -1,0 +1,69 @@
+name: Deploy Backend to AWS ECS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+      ECR_REPO: ${{ secrets.ECR_REPO }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        run: aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+
+      - name: Build backend Docker image
+        run: |
+          docker build -t $ECR_REPO:latest ./other/backend
+          docker tag $ECR_REPO:latest $ECR_REGISTRY/$ECR_REPO:latest
+
+      - name: Push to ECR
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPO:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      STACK_NAME: speedconnect-stack
+      TEMPLATE_FILE: cloudformation.yaml
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO }}:latest
+      MONGO_URL: ${{ secrets.MONGO_URI }}
+      VPC_ID: ${{ secrets.VPC_ID }}
+      SUBNETS: ${{ secrets.SUBNETS }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name $STACK_NAME \
+            --template-file $TEMPLATE_FILE \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              BackendImage=$BACKEND_IMAGE \
+              MongoUrl=$MONGO_URL \
+              VpcId=$VPC_ID \
+              Subnets=\"$SUBNETS\"
